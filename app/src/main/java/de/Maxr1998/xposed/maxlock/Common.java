@@ -24,6 +24,8 @@ import de.Maxr1998.xposed.maxlock.util.Util;
 
 public abstract class Common {
 
+    public static final String MAXLOCK_PACKAGE_NAME = "de.Maxr1998.xposed.maxlock";
+
     public static final String INTENT_EXTRAS_NAMES = "intent_extras_pkg_name";
     public static final String INTENT_EXTRAS_CUSTOM_APP = "custom_app";
 
@@ -38,7 +40,10 @@ public abstract class Common {
     public static final String APP_KEY_PREFERENCE = "_key";
     public static final String FAILED_ATTEMPTS_COUNTER = "failed_attempts_counter";
     public static final String FAILED_ATTEMPTS_TIMER = "failed_attempts_timer";
+    public static final String TASKER_QUERIES = "tasker_queries";
     public static final String THEME_PKG = "theme_pkg";
+
+    public static final String ML_IMPLEMENTATION = "ml_implementation";
 
     public static final String LOCKING_TYPE_SETTINGS = "locking_type_settings";
     /* TYPE */
@@ -53,7 +58,7 @@ public abstract class Common {
 
     public static final String LOCKING_UI_SETTINGS = "locking_ui_settings";
     /* UI */
-    public static final String OPEN_THEME_MANAGER = "open_theme_manager";
+    //public static final String OPEN_THEME_MANAGER = "open_theme_manager";
     public static final String BACKGROUND = "background";
     public static final String BACKGROUND_COLOR = "background_color";
     public static final String HIDE_STATUS_BAR = "hide_status_bar";
@@ -115,7 +120,7 @@ public abstract class Common {
     public static final String PREFS_KEY = "keys";
     public static final String PREFS_APPS = "packages";
     public static final String PREFS_KEYS_PER_APP = "per_app_settings";
-    public static final String PREFS_THEME = "theme";
+    //public static final String PREFS_THEME = "theme";
 
     // Modes //
     public static final String LOCK_ACTIVITY_MODE = "la_mode";
@@ -127,9 +132,10 @@ public abstract class Common {
     public static final String BACKUP_DIR = EXTERNAL_FILES_DIR + "Backup/";
 
     // URLS //
-    public static final Uri WEBSITE_URI = Uri.parse("http://maxlock.maxr1998.de/?client=inapp&lang=" + Util.getLanguageCode());
-    public static final Uri MAXR1998_URI = Uri.parse("http://maxr1998.de/");
-    public static final Uri TECHNO_SPARKS_URI = Uri.parse("http://www.technosparks.net/");
+    public static final Uri WEBSITE_URI = Uri.parse("https://maxlock.maxr1998.de/?client=inapp&lang=" + Util.getLanguageCode());
+    public static final Uri MAXR1998_URI = Uri.parse("https://maxr1998.de/");
+    public static final Uri PAYPAL_DONATE_URI = Uri.parse("https://maxr1998.de/r/donate");
+    public static final Uri TECHNO_SPARKS_URI = Uri.parse("https://www.technosparks.net/");
 
     public static final Uri KNOWN_PROBLEM_SETTINGS_URI = Uri.parse("https://maxlock.maxr1998.de/pages/general/known-problems#Incompatibility");
 }

@@ -1,17 +1,23 @@
 apply plugin: 'com.android.application'
+
+ext.languages = ["de", "es", "fa", "fr", "it", "ja", "pl", "ru", "zh-rCN", "zh-rTW"];
+ext.supportLibraryVersion = "25.3.0";
+ext.c_languages = ["", "es-ES", "fa", "fr", "it", "ja", "pl", "ru", "zh-CN", "zh-TW"];
+ext.crowdinKey = null;
+
 android {
     signingConfigs {
         main
     }
-    compileSdkVersion 24
-    buildToolsVersion '24.0.0'
+    compileSdkVersion 25
+    buildToolsVersion '25.0.2'
     defaultConfig {
         applicationId "de.Maxr1998.xposed.maxlock"
         minSdkVersion 16
-        targetSdkVersion 24
-        versionCode 43
-        versionName "6.3.1"
-        resConfigs "de", "es", "fa", "fr", "it", "ja", "ru", "zh-rCN", "zh-rTW"
+        targetSdkVersion 25
+        versionCode 45
+        versionName "6.4.1"
+        resConfigs languages
         vectorDrawables.useSupportLibrary = true
     }
     buildTypes {
@@ -47,6 +53,7 @@ if (propFile.exists()) {
     android.signingConfigs.main.storePassword props.keyStorePassword
     android.signingConfigs.main.keyAlias props.keyAlias
     android.signingConfigs.main.keyPassword props.keyPassword
+    ext.crowdinKey = props.crowdinKey
 }
 
 repositories {
@@ -61,25 +68,42 @@ repositories {
 dependencies {
     // From JCenter or other repositories
     //-- 3rd-party
-    compile 'com.anjlab.android.iab.v3:library:1.0.27@aar'
+    compile 'com.anjlab.android.iab.v3:library:1.0.38@aar'
     compile 'com.github.attenzione:android-ColorPickerPreference:e3aa301016'
-    compile 'com.github.Maxr1998:material-intro:20044f88e8'
     compile 'com.github.shkschneider:android_PreferenceFragmentCompat:1.0.0@aar'
-    compile 'com.google.guava:guava:19.0-rc1'
-    //compile 'com.heinrichreimersoftware:material-intro:1.2.1'
+    compile 'com.google.guava:guava:20.0'
+    compile 'com.heinrichreimersoftware:material-intro:1.6'
     compile 'com.simplecityapps:recyclerview-fastscroll:1.0.5'
+    compile 'com.twofortyfouram:android-plugin-api-for-locale:1.0.2'
     compile 'commons-io:commons-io:2.4'
     provided 'de.robv.android.xposed:api:81'
     provided 'de.robv.android.xposed:api:81:sources'
     //-- Android support and Google Services
-    compile 'com.android.support:appcompat-v7:24.0.0'
-    compile 'com.android.support:customtabs:24.0.0'
-    compile 'com.android.support:gridlayout-v7:24.0.0'
-    compile 'com.android.support:palette-v7:24.0.0'
-    compile 'com.android.support:recyclerview-v7:24.0.0'
-    compile 'com.android.support:support-v4:24.0.0'
-    compile 'com.google.android.gms:play-services-base:9.0.2'
-    compile 'com.google.android.gms:play-services-analytics:9.0.2'
+    compile "com.android.support:appcompat-v7:$supportLibraryVersion"
+    compile "com.android.support:customtabs:$supportLibraryVersion"
+    compile "com.android.support:design:$supportLibraryVersion"
+    compile "com.android.support:gridlayout-v7:$supportLibraryVersion"
+    compile "com.android.support:recyclerview-v7:$supportLibraryVersion"
+    /* includes all other support-v4 libraries */
+    compile "com.android.support:support-fragment:$supportLibraryVersion"
+    compile 'com.google.android.gms:play-services-base:10.2.0'
+    compile 'com.google.android.gms:play-services-analytics:10.2.0'
     // Local files
     compile(name: 'PatternLock', ext: 'aar')
+}
+
+task updateTranslations() << {
+    if (crowdinKey == null)
+        return;
+    for (int i = 0; i < c_languages.size(); i++) {
+        String c_lang = c_languages[i];
+        if (c_lang == "")
+            continue;
+        String lang = languages[i];
+        String file = "\$PWD/src/main/res/values-$lang/strings.xml";
+        exec {
+            executable "bash"
+            args "-c", "wget -O \"$file\" \"https://api.crowdin.com/api/project/MaxLock/export-file?file=strings.xml&language=$c_lang&key=$crowdinKey\""
+        }
+    }
 }

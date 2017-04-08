@@ -16,7 +16,8 @@
   -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="de.Maxr1998.xposed.maxlock">
+    package="de.Maxr1998.xposed.maxlock"
+    android:installLocation="internalOnly">
 
     <uses-sdk tools:overrideLibrary="xyz.danoz.recyclerviewfastscroller" />
 
@@ -153,6 +154,50 @@
             </intent-filter>
         </receiver>
 
+        <activity
+            android:name=".ui.actions.tasker.TaskerEventConfigActivity"
+            android:exported="true"
+            android:taskAffinity="" />
+
+        <activity-alias
+            android:name=".ui.actions.tasker.EventUnlockAttempt"
+            android:exported="true"
+            android:label="Unlock Attempt"
+            android:targetActivity=".ui.actions.tasker.TaskerEventConfigActivity">
+            <intent-filter>
+                <action android:name="net.dinglisch.android.tasker.ACTION_EDIT_EVENT" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ui.actions.tasker.EventUnlockSuccess"
+            android:exported="true"
+            android:label="Unlock Success"
+            android:targetActivity=".ui.actions.tasker.TaskerEventConfigActivity">
+            <intent-filter>
+                <action android:name="net.dinglisch.android.tasker.ACTION_EDIT_EVENT" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ui.actions.tasker.EventUnlockFailed"
+            android:exported="true"
+            android:label="Unlock Failed"
+            android:targetActivity=".ui.actions.tasker.TaskerEventConfigActivity">
+            <intent-filter>
+                <action android:name="net.dinglisch.android.tasker.ACTION_EDIT_EVENT" />
+            </intent-filter>
+        </activity-alias>
+
+        <receiver
+            android:name=".ui.actions.tasker.TaskerEventQueryReceiver"
+            android:exported="true"
+            tools:ignore="ExportedReceiver">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.QUERY_CONDITION" />
+            </intent-filter>
+        </receiver>
+
         <!-- New app install -->
         <receiver
             android:name=".ui.NewAppInstalledBroadcastReceiver"
@@ -166,6 +211,18 @@
             </intent-filter>
         </receiver>
 
+        <!-- MaxLock no root plugin -->
+        <service
+            android:name=".no_xposed.AppLockService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/applock_service" />
+        </service>
+
         <!-- Xposed configs -->
         <meta-data
             android:name="xposedmodule"
@@ -176,6 +233,11 @@
         <meta-data
             android:name="xposedminversion"
             android:value="42" />
+
+        <!-- App shortcuts -->
+        <meta-data
+            android:name="android.app.shortcuts"
+            android:resource="@xml/app_shortcuts" />
 
         <!-- Status bar tinting below Android Lollipop -->
         <meta-data

@@ -18,12 +18,19 @@
 package de.Maxr1998.xposed.maxlock.ui.settings;
 
 import android.annotation.SuppressLint;
+import android.content.ComponentName;
 import android.content.DialogInterface;
+import android.graphics.Color;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
-import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
+import android.support.customtabs.CustomTabsCallback;
+import android.support.customtabs.CustomTabsClient;
+import android.support.customtabs.CustomTabsIntent;
+import android.support.customtabs.CustomTabsServiceConnection;
+import android.support.customtabs.CustomTabsSession;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
@@ -34,6 +41,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.ListView;
 import android.widget.TextView;
 
@@ -44,6 +52,7 @@ import java.util.List;
 
 import de.Maxr1998.xposed.maxlock.Common;
 import de.Maxr1998.xposed.maxlock.R;
+import de.Maxr1998.xposed.maxlock.util.MLPreferences;
 import de.Maxr1998.xposed.maxlock.util.Util;
 
 import static de.Maxr1998.xposed.maxlock.util.Util.LOG_TAG_IAB;
@@ -59,11 +68,14 @@ public class DonateActivity extends AppCompatActivity implements BillingProcesso
     private static final int[] productIcons = {
             R.drawable.ic_coke_48dp,
             R.drawable.ic_beer_48dp,
-            R.drawable.ic_favorite_36dp,
+            R.drawable.ic_favorite_small_48dp,
             R.drawable.ic_favorite_48dp
     };
     private BillingProcessor bp;
     private TextView donationStatusText;
+
+    private CustomTabsServiceConnection mConnection;
+    private CustomTabsSession mSession;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -86,6 +98,36 @@ public class DonateActivity extends AppCompatActivity implements BillingProcesso
                 return null;
             }
         }.execute();
+
+        Button donatePayPal = (Button) findViewById(R.id.donate_paypal);
+        donatePayPal.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                CustomTabsIntent intent = new CustomTabsIntent.Builder(mSession)
+                        .setShowTitle(true)
+                        .enableUrlBarHiding()
+                        .setToolbarColor(Color.WHITE)
+                        .build();
+                intent.launchUrl(DonateActivity.this, Common.PAYPAL_DONATE_URI);
+            }
+        });
+
+        mConnection = new CustomTabsServiceConnection() {
+            @Override
+            public void onCustomTabsServiceConnected(ComponentName componentName, CustomTabsClient customTabsClient) {
+                customTabsClient.warmup(0);
+                mSession = customTabsClient.newSession(new CustomTabsCallback());
+                if (mSession == null) {
+                    return;
+                }
+                mSession.mayLaunchUrl(Common.PAYPAL_DONATE_URI, null, null);
+            }
+
+            @Override
+            public void onServiceDisconnected(ComponentName name) {
+            }
+        };
+        CustomTabsClient.bindCustomTabsService(this, "com.android.chrome", mConnection);
     }
 
     @Override
@@ -105,8 +147,9 @@ public class DonateActivity extends AppCompatActivity implements BillingProcesso
     public void onBillingInitialized() {
         reloadBilling();
         ArrayAdapter<String> productsAdapter = new ArrayAdapter<String>(this, android.R.layout.select_dialog_item, android.R.id.text1, productIds) {
+            @NonNull
             @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
+            public View getView(int position, View convertView, @NonNull ViewGroup parent) {
                 View v = super.getView(position, convertView, parent);
                 TextView tv = (TextView) v.findViewById(android.R.id.text1);
                 String title;
@@ -195,7 +238,7 @@ public class DonateActivity extends AppCompatActivity implements BillingProcesso
         Log.i(LOG_TAG_IAB, "Loaded.");
         List<String> products = bp.listOwnedProducts();
         if (products.size() > 0) {
-            PreferenceManager.getDefaultSharedPreferences(this).edit().putBoolean(Common.DONATED, true).commit();
+            MLPreferences.getPreferences(this).edit().putBoolean(Common.DONATED, true).apply();
             donationStatusText.setText(R.string.donate_status_donated);
         } else {
             donationStatusText.setText(R.string.donate_status_not_donated);
@@ -206,6 +249,9 @@ public class DonateActivity extends AppCompatActivity implements BillingProcesso
     protected void onDestroy() {
         if (bp != null) {
             bp.release();
+        }
+        if (mConnection != null) {
+            unbindService(mConnection);
         }
         super.onDestroy();
     }

@@ -44,9 +44,9 @@ import android.support.annotation.NonNull;
 import android.support.annotation.StringRes;
 import android.support.annotation.XmlRes;
 import android.support.customtabs.CustomTabsIntent;
+import android.support.design.widget.Snackbar;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentManager;
-import android.support.v4.app.FragmentTransaction;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.hardware.fingerprint.FingerprintManagerCompat;
 import android.support.v4.preference.PreferenceFragmentCompat;
@@ -73,6 +73,7 @@ import java.util.zip.ZipOutputStream;
 
 import de.Maxr1998.xposed.maxlock.BuildConfig;
 import de.Maxr1998.xposed.maxlock.Common;
+import de.Maxr1998.xposed.maxlock.MLImplementation;
 import de.Maxr1998.xposed.maxlock.R;
 import de.Maxr1998.xposed.maxlock.ui.SettingsActivity;
 import de.Maxr1998.xposed.maxlock.ui.settings.applist.AppListFragment;
@@ -90,14 +91,27 @@ public final class MaxLockPreferenceFragment extends PreferenceFragmentCompat {
     private SharedPreferences prefs;
     private Screen screen;
 
-    public static void launchFragment(@NonNull Fragment fragment, boolean fromRoot, @NonNull Fragment from) {
+    private Snackbar snackCache;
+
+    public static void launchFragment(@NonNull FragmentManager manager, @NonNull Fragment fragment, boolean fromRoot) {
         if (fromRoot) {
-            from.getFragmentManager().popBackStack(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);
+            manager.popBackStack(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);
         }
-        FragmentTransaction ft = from.getFragmentManager().beginTransaction();
-        ft.setCustomAnimations(R.anim.fragment_in, R.anim.fragment_out, R.anim.fragment_pop_in, R.anim.fragment_pop_out);
-        ft.replace(R.id.fragment_container, fragment, fragment instanceof AppListFragment ? "AppListFragment" : null).addToBackStack(null).commit();
-        ((SettingsActivity) from.getActivity()).showMultipane();
+        manager.beginTransaction()
+                .setCustomAnimations(R.anim.fragment_in, R.anim.fragment_out, R.anim.fragment_pop_in, R.anim.fragment_pop_out)
+                .replace(R.id.fragment_container, fragment).addToBackStack(null).commit();
+        SettingsActivity.showMultipane(manager);
+    }
+
+    private void setTitle() {
+        // Only apply title for main screen if back stack is empty (prevent multipane from setting title)
+        if ((getFragmentManager().getBackStackEntryCount() == 0 && screen == Screen.MAIN) || screen != Screen.MAIN) {
+            if (screen == Screen.MAIN) {
+                getActivity().setTitle(getName());
+            } else {
+                getActivity().setTitle(screen.title);
+            }
+        }
     }
 
     @SuppressLint("WorldReadableFiles")
@@ -115,7 +129,8 @@ public final class MaxLockPreferenceFragment extends PreferenceFragmentCompat {
         if (screen == Screen.IMOD) {
             getPreferenceManager().setSharedPreferencesName(Common.PREFS_APPS);
         }
-        getPreferenceManager().setSharedPreferencesMode(Context.MODE_WORLD_READABLE);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N)
+            getPreferenceManager().setSharedPreferencesMode(Context.MODE_WORLD_READABLE);
         addPreferencesFromResource(screen.preferenceXML);
         switch (screen) {
             case MAIN:
@@ -168,7 +183,10 @@ public final class MaxLockPreferenceFragment extends PreferenceFragmentCompat {
                 if (prefs.getBoolean(Common.DONATED, false)) {
                     pro.setEnabled(false);
                     pro.setSummary("");
-                    prefs.edit().putBoolean(Common.ENABLE_PRO, true).apply();
+                    if (!prefs.getBoolean(Common.ENABLE_PRO, false)) {
+                        prefs.edit().putBoolean(Common.ENABLE_PRO, true).apply();
+                        prefs.edit().putBoolean(Common.ENABLE_LOGGING, true).apply();
+                    }
                 }
                 break;
             case TYPE:
@@ -184,7 +202,7 @@ public final class MaxLockPreferenceFragment extends PreferenceFragmentCompat {
                 }
                 break;
             case UI:
-                SharedPreferences prefsTheme = getActivity().getSharedPreferences(Common.PREFS_THEME, Context.MODE_WORLD_READABLE);
+                /*SharedPreferences prefsTheme = getActivity().getSharedPreferences(Common.PREFS_THEME, Context.MODE_WORLD_READABLE);
                 Preference[] overriddenByTheme = {findPreference(Common.BACKGROUND), findPreference(Common.HIDE_TITLE_BAR), findPreference(Common.HIDE_INPUT_BAR), findPreference(Common.SHOW_KC_DIVIDER), findPreference(Common.MAKE_KC_TOUCH_VISIBLE)};
                 if (prefsTheme.contains(Common.THEME_PKG)) {
                     Preference themeManager = findPreference(Common.OPEN_THEME_MANAGER);
@@ -193,7 +211,7 @@ public final class MaxLockPreferenceFragment extends PreferenceFragmentCompat {
                         preference.setEnabled(false);
                         preference.setSummary(preference.getSummary() != null ? preference.getSummary() : " " + getString(R.string.pref_summary_overridden_by_theme));
                     }
-                }
+                }*/
                 ListPreference lp = (ListPreference) findPreference(Common.BACKGROUND);
                 findPreference(Common.BACKGROUND_COLOR).setEnabled(lp.getValue().equals("color"));
                 lp.setOnPreferenceChangeListener(new Preference.OnPreferenceChangeListener() {
@@ -243,23 +261,57 @@ public final class MaxLockPreferenceFragment extends PreferenceFragmentCompat {
             protectOrUninstall.setTitle(R.string.pref_uninstall);
             protectOrUninstall.setSummary("");
         }
+
+        // Show Snackbars if no password and/or packages set up
+        if (screen == Screen.MAIN && !isSecondPane(this)) {
+            @StringRes int stringId = 0;
+            Fragment fragment = null;
+            if (prefs.getString(Common.LOCKING_TYPE, "").equals("")) {
+                stringId = R.string.sb_no_locking_type;
+                fragment = Screen.TYPE.getScreen();
+            } else if (!new File(Util.dataDir(getContext()) + "shared_prefs" + File.separator + Common.PREFS_APPS + ".xml").exists()) {
+                stringId = R.string.sb_no_locked_apps;
+                fragment = new AppListFragment();
+            }
+            if (stringId != 0 && fragment != null) {
+                final Fragment copyFragment = fragment;
+                snackCache = Snackbar.make(getActivity().findViewById(android.R.id.content), stringId, Snackbar.LENGTH_INDEFINITE)
+                        .setAction(R.string.sb_action_setup, new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+                                launchFragment(getFragmentManager(), copyFragment, true);
+                            }
+                        });
+                snackCache.show();
+            }
+        }
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        if (screen == Screen.MAIN && snackCache != null) {
+            snackCache.dismiss();
+            snackCache = null;
+        }
     }
 
     @Override
     public void onActivityCreated(Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
         setTitle();
-        if (screen != Screen.MAIN) {
-            //noinspection ConstantConditions
-            ((AppCompatActivity) getActivity()).getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        }
+        //noinspection ConstantConditions
+        ((AppCompatActivity) getActivity()).getSupportActionBar().setDisplayHomeAsUpEnabled(screen != Screen.MAIN || getFragmentManager().getBackStackEntryCount() > 0);
     }
 
-    private void setTitle() {
-        if (screen == Screen.MAIN) {
-            getActivity().setTitle(getName());
-        } else {
-            getActivity().setTitle(screen.title);
+    @Override
+    public void onViewCreated(View v, Bundle savedInstanceState) {
+        getListView().setPadding(0, 0, 0, 0);
+        getListView().setOverscrollFooter(new ColorDrawable(v.getContext().obtainStyledAttributes(new int[]{R.attr.windowBackground}).getColor(0, ContextCompat.getColor(v.getContext(), R.color.default_window_background))));
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            getListView().setSelector(v.getContext().obtainStyledAttributes(new int[]{R.attr.highlightDrawable}).getDrawable(0));
+            ContextCompat.getDrawable(v.getContext(), getResources().getIdentifier("overscroll_edge", "drawable", "android")).setColorFilter(ContextCompat.getColor(v.getContext(), R.color.primary_red), PorterDuff.Mode.SRC_ATOP);
+            ContextCompat.getDrawable(v.getContext(), getResources().getIdentifier("overscroll_glow", "drawable", "android")).setColorFilter(ContextCompat.getColor(v.getContext(), R.color.primary_red), PorterDuff.Mode.SRC_ATOP);
         }
     }
 
@@ -284,21 +336,34 @@ public final class MaxLockPreferenceFragment extends PreferenceFragmentCompat {
         switch (screen) {
             case MAIN:
                 switch (preference.getKey()) {
+                    case Common.ML_IMPLEMENTATION:
+                        AlertDialog implementation = new AlertDialog.Builder(getContext())
+                                .setTitle(preference.getTitle())
+                                .setView(MLImplementation.createImplementationDialog(getContext()))
+                                .setNegativeButton(android.R.string.ok, null)
+                                .setOnDismissListener(new DialogInterface.OnDismissListener() {
+                                    @Override
+                                    public void onDismiss(DialogInterface dialog) {
+                                        ((SettingsActivity) getActivity()).updateXposedStatusAlert();
+                                    }
+                                })
+                                .create();
+                        implementation.show();
+                        return true;
                     case Common.LOCKING_TYPE_SETTINGS:
-                        launchFragment(Screen.TYPE.getScreen(), true, this);
+                        launchFragment(getFragmentManager(), Screen.TYPE.getScreen(), true);
                         return true;
                     case Common.LOCKING_UI_SETTINGS:
-                        launchFragment(Screen.UI.getScreen(), true, this);
+                        launchFragment(getFragmentManager(), Screen.UI.getScreen(), true);
                         return true;
                     case Common.LOCKING_OPTIONS:
-                        prefs.edit().putBoolean(Common.ENABLE_LOGGING, prefs.getBoolean(Common.ENABLE_PRO, false)).apply();
-                        launchFragment(Screen.OPTIONS.getScreen(), true, this);
+                        launchFragment(getFragmentManager(), Screen.OPTIONS.getScreen(), true);
                         return true;
                     case Common.IMOD_OPTIONS:
-                        launchFragment(Screen.IMOD.getScreen(), true, this);
+                        launchFragment(getFragmentManager(), Screen.IMOD.getScreen(), true);
                         return true;
                     case Common.CHOOSE_APPS:
-                        launchFragment(new AppListFragment(), true, this);
+                        launchFragment(getFragmentManager(), new AppListFragment(), true);
                         return true;
                     case Common.HIDE_APP_FROM_LAUNCHER:
                         TwoStatePreference hideApp = (TwoStatePreference) preference;
@@ -317,7 +382,7 @@ public final class MaxLockPreferenceFragment extends PreferenceFragmentCompat {
                         ((SettingsActivity) getActivity()).restart();
                         return true;
                     case Common.ABOUT:
-                        launchFragment(Screen.ABOUT.getScreen(), true, this);
+                        launchFragment(getFragmentManager(), Screen.ABOUT.getScreen(), true);
                         return true;
                     case Common.DONATE:
                         startActivity(new Intent(getActivity(), DonateActivity.class));
@@ -370,10 +435,10 @@ public final class MaxLockPreferenceFragment extends PreferenceFragmentCompat {
                         Util.setPassword(getActivity(), null);
                         return true;
                     case Common.LOCKING_TYPE_PIN:
-                        launchFragment(new PinSetupFragment(), false, this);
+                        launchFragment(getFragmentManager(), new PinSetupFragment(), false);
                         return true;
                     case Common.LOCKING_TYPE_KNOCK_CODE:
-                        launchFragment(new KnockCodeSetupFragment(), false, this);
+                        launchFragment(getFragmentManager(), new KnockCodeSetupFragment(), false);
                         return true;
                     case Common.LOCKING_TYPE_PATTERN:
                         Intent intent = new Intent(LockPatternActivity.ACTION_CREATE_PATTERN, null, getActivity(), LockPatternActivity.class);
@@ -384,7 +449,7 @@ public final class MaxLockPreferenceFragment extends PreferenceFragmentCompat {
             case OPTIONS:
                 switch (preference.getKey()) {
                     case Common.VIEW_LOGS:
-                        launchFragment(new LogViewerFragment(), false, this);
+                        launchFragment(getFragmentManager(), new LogViewerFragment(), false);
                         return true;
                 }
                 break;
@@ -413,17 +478,6 @@ public final class MaxLockPreferenceFragment extends PreferenceFragmentCompat {
                 break;
         }
         return super.onPreferenceTreeClick(preferenceScreen, preference);
-    }
-
-    @Override
-    public void onViewCreated(View v, Bundle savedInstanceState) {
-        getListView().setPadding(0, 0, 0, 0);
-        getListView().setOverscrollFooter(new ColorDrawable(v.getContext().obtainStyledAttributes(new int[]{R.attr.windowBackground}).getColor(0, ContextCompat.getColor(v.getContext(), R.color.default_window_background))));
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-            getListView().setSelector(v.getContext().obtainStyledAttributes(new int[]{R.attr.highlightDrawable}).getDrawable(0));
-            ContextCompat.getDrawable(v.getContext(), getResources().getIdentifier("overscroll_edge", "drawable", "android")).setColorFilter(ContextCompat.getColor(v.getContext(), R.color.primary_red), PorterDuff.Mode.SRC_ATOP);
-            ContextCompat.getDrawable(v.getContext(), getResources().getIdentifier("overscroll_glow", "drawable", "android")).setColorFilter(ContextCompat.getColor(v.getContext(), R.color.primary_red), PorterDuff.Mode.SRC_ATOP);
-        }
     }
 
     @Override
@@ -523,7 +577,7 @@ public final class MaxLockPreferenceFragment extends PreferenceFragmentCompat {
         TYPE(R.string.pref_screen_locking_type, R.xml.preferences_locking_type),
         UI(R.string.pref_screen_locking_ui, R.xml.preferences_locking_ui),
         OPTIONS(R.string.pref_screen_locking_options, R.xml.preferences_locking_options),
-        IMOD(R.string.pref_screen_locking_intika, R.xml.preferences_locking_imod),
+        IMOD(R.string.pref_screen_delayed_relock, R.xml.preferences_locking_imod),
         ABOUT(R.string.pref_screen_about, R.xml.preferences_about);
 
         public static String KEY = "screen";

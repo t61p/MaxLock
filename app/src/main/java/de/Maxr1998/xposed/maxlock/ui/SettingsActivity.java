@@ -28,7 +28,6 @@ import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
-import android.support.annotation.Keep;
 import android.support.annotation.Nullable;
 import android.support.customtabs.CustomTabsCallback;
 import android.support.customtabs.CustomTabsClient;
@@ -37,7 +36,7 @@ import android.support.customtabs.CustomTabsService;
 import android.support.customtabs.CustomTabsServiceConnection;
 import android.support.customtabs.CustomTabsSession;
 import android.support.v4.app.Fragment;
-import android.support.v4.app.FragmentTransaction;
+import android.support.v4.app.FragmentManager;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.view.MenuItemCompat;
 import android.support.v7.app.AlertDialog;
@@ -55,13 +54,16 @@ import android.widget.CompoundButton;
 
 import java.util.Arrays;
 
+import de.Maxr1998.xposed.maxlock.BuildConfig;
 import de.Maxr1998.xposed.maxlock.Common;
+import de.Maxr1998.xposed.maxlock.MLImplementation;
 import de.Maxr1998.xposed.maxlock.R;
 import de.Maxr1998.xposed.maxlock.lib.StatusBarTintApi;
 import de.Maxr1998.xposed.maxlock.ui.firstStart.FirstStartActivity;
 import de.Maxr1998.xposed.maxlock.ui.lockscreen.LockView;
 import de.Maxr1998.xposed.maxlock.ui.settings.MaxLockPreferenceFragment;
 import de.Maxr1998.xposed.maxlock.ui.settings.Startup;
+import de.Maxr1998.xposed.maxlock.ui.settings.applist.AppListFragment;
 import de.Maxr1998.xposed.maxlock.util.AuthenticationSucceededListener;
 import de.Maxr1998.xposed.maxlock.util.MLPreferences;
 import de.Maxr1998.xposed.maxlock.util.Util;
@@ -73,9 +75,6 @@ public class SettingsActivity extends AppCompatActivity implements Authenticatio
     private static final String TAG_PREFERENCE_FRAGMENT = "MLPreferenceFragment";
     private static final String TAG_PREFERENCE_FRAGMENT_SECOND_PANE = "SecondPanePreferenceFragment";
     private static final String TAG_LOCK_FRAGMENT = "LockFragment";
-    @Keep
-    @SuppressWarnings({"FieldCanBeLocal", "CanBeFinal"})
-    private static boolean IS_ACTIVE = false;
     private static boolean UNLOCKED = false;
 
     static {
@@ -83,13 +82,33 @@ public class SettingsActivity extends AppCompatActivity implements Authenticatio
     }
 
     public ComponentName deviceAdmin;
-    private MaxLockPreferenceFragment mSettingsFragment;
+    private Fragment mSettingsFragment;
     private DevicePolicyManager devicePolicyManager;
     private CustomTabsServiceConnection mConnection;
     private CustomTabsSession mSession;
 
     public static boolean isSecondPane(Fragment f) {
         return f.getTag() != null && f.getTag().equals(TAG_PREFERENCE_FRAGMENT_SECOND_PANE);
+    }
+
+    /**
+     * Show second pane if available
+     */
+    public static void showMultipane(FragmentManager manager) {
+        Fragment secondPane = manager.findFragmentByTag(TAG_PREFERENCE_FRAGMENT_SECOND_PANE);
+        if (secondPane != null) {
+            manager.beginTransaction().show(secondPane).commit();
+        }
+    }
+
+    /**
+     * Hide second pane if visible
+     */
+    public static void hideMultipane(FragmentManager manager) {
+        Fragment secondPane = manager.findFragmentByTag(TAG_PREFERENCE_FRAGMENT_SECOND_PANE);
+        if (secondPane != null) {
+            manager.beginTransaction().hide(secondPane).commit();
+        }
     }
 
     @Override
@@ -109,9 +128,9 @@ public class SettingsActivity extends AppCompatActivity implements Authenticatio
 
         // Hide multipane view
         if (getSupportFragmentManager().getBackStackEntryCount() == 0) {
-            hideMultipane();
+            hideMultipane(getSupportFragmentManager());
         }
-        mSettingsFragment = (MaxLockPreferenceFragment) getSupportFragmentManager().findFragmentByTag(TAG_PREFERENCE_FRAGMENT);
+        mSettingsFragment = getSupportFragmentManager().findFragmentByTag(TAG_PREFERENCE_FRAGMENT);
         if (mSettingsFragment == null) {
             // Main fragment not visible → app just opened
             if (getSupportFragmentManager().findFragmentByTag(TAG_LOCK_FRAGMENT) == null) {
@@ -156,7 +175,7 @@ public class SettingsActivity extends AppCompatActivity implements Authenticatio
         getMenuInflater().inflate(R.menu.toolbar_menu, menu);
         SwitchCompat master_switch = (SwitchCompat) MenuItemCompat.getActionView(menu.findItem(R.id.toolbar_master_switch));
         //noinspection deprecation
-        master_switch.setChecked(getSharedPreferences(Common.PREFS_APPS, Context.MODE_WORLD_READABLE).getBoolean(Common.MASTER_SWITCH_ON, true));
+        master_switch.setChecked(MLPreferences.getPrefsApps(this).getBoolean(Common.MASTER_SWITCH_ON, true));
         master_switch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @SuppressLint({"CommitPrefEdits"})
             @Override
@@ -202,9 +221,7 @@ public class SettingsActivity extends AppCompatActivity implements Authenticatio
     public void onBackPressed() {
         if (getSupportFragmentManager().getBackStackEntryCount() > 0) {
             if (getSupportFragmentManager().getBackStackEntryCount() == 1) {
-                //noinspection ConstantConditions
-                getSupportActionBar().setDisplayHomeAsUpEnabled(false);
-                hideMultipane();
+                hideMultipane(getSupportFragmentManager());
             }
             getSupportFragmentManager().popBackStack();
         } else {
@@ -216,17 +233,25 @@ public class SettingsActivity extends AppCompatActivity implements Authenticatio
     public void onAuthenticationSucceeded() {
         UNLOCKED = true;
         if (mSettingsFragment == null) {
-            mSettingsFragment = MaxLockPreferenceFragment.Screen.MAIN.getScreen();
-            FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
-            ft.setCustomAnimations(R.anim.fragment_in, R.anim.fragment_out);
-            ft.replace(R.id.fragment_container, mSettingsFragment, TAG_PREFERENCE_FRAGMENT).commit();
+            mSettingsFragment = getIntent().getAction().equals(BuildConfig.APPLICATION_ID + ".VIEW_APPS") ?
+                    new AppListFragment() : MaxLockPreferenceFragment.Screen.MAIN.getScreen();
+            getSupportFragmentManager().beginTransaction()
+                    .setCustomAnimations(R.anim.fragment_in, R.anim.fragment_out)
+                    .replace(R.id.fragment_container, mSettingsFragment, TAG_PREFERENCE_FRAGMENT)
+                    .commit();
             if (getSupportActionBar() != null) {
                 getSupportActionBar().show();
             }
         }
-        if (!IS_ACTIVE) {
+        updateXposedStatusAlert();
+    }
+
+    public void updateXposedStatusAlert() {
+        //noinspection ConstantConditions
+        if (!MLImplementation.isXposedActive()) {
+            boolean showWarning = MLImplementation.getImplementation(MLPreferences.getPreferences(this)) == MLImplementation.DEFAULT;
             //noinspection ConstantConditions
-            findViewById(R.id.xposed_active).setVisibility(View.VISIBLE);
+            findViewById(R.id.xposed_active).setVisibility(showWarning ? View.VISIBLE : View.GONE);
             //noinspection ConstantConditions
             findViewById(R.id.xposed_active_message).setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -238,34 +263,6 @@ public class SettingsActivity extends AppCompatActivity implements Authenticatio
                     help.show();
                 }
             });
-        }
-    }
-
-    /**
-     * Hide second pane if visible
-     */
-    public void hideMultipane() {
-        Fragment secondPane = getSupportFragmentManager().findFragmentByTag(TAG_PREFERENCE_FRAGMENT_SECOND_PANE);
-        if (secondPane != null) {
-            getSupportFragmentManager().beginTransaction().hide(secondPane).commit();
-            View divider = findViewById(R.id.fragment_container_divider);
-            if (divider != null) {
-                divider.setVisibility(View.GONE);
-            }
-        }
-    }
-
-    /**
-     * Show second pane if available
-     */
-    public void showMultipane() {
-        Fragment secondPane = getSupportFragmentManager().findFragmentByTag(TAG_PREFERENCE_FRAGMENT_SECOND_PANE);
-        if (secondPane != null) {
-            View divider = findViewById(R.id.fragment_container_divider);
-            if (divider != null) {
-                divider.setVisibility(View.VISIBLE);
-            }
-            getSupportFragmentManager().beginTransaction().show(secondPane).commit();
         }
     }
 
@@ -287,7 +284,7 @@ public class SettingsActivity extends AppCompatActivity implements Authenticatio
     protected void onPause() {
         super.onPause();
         if (PreferenceManager.getDefaultSharedPreferences(this).getBoolean(Common.ENABLE_LOGGING, false) && !UNLOCKED) {
-            Util.logFailedAuthentication(this, "Main App");
+            Util.logFailedAuthentication(this, getPackageName());
         }
     }
 

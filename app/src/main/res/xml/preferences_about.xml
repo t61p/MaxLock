@@ -8,7 +8,7 @@
             maxlock:license="@string/license_maxlock" />
         <Preference
             android:key="show_changelog"
-            android:title="Changelog" />
+            android:title="@string/pref_show_changelog" />
         <Preference
             android:key="visit_website"
             android:title="@string/pref_visit_website" />
@@ -50,6 +50,9 @@
         <de.Maxr1998.xposed.maxlock.preference.TranslationPreference
             android:summary="@string/translation_persian"
             maxlock:language="fa" />
+        <de.Maxr1998.xposed.maxlock.preference.TranslationPreference
+            android:summary="@string/translation_polish"
+            maxlock:language="pl" />
         <de.Maxr1998.xposed.maxlock.preference.TranslationPreference
             android:summary="@string/translation_russian"
             maxlock:language="ru" />
